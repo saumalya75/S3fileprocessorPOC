@@ -1,0 +1,82 @@
+import json
+import boto3
+
+
+def lambda_handler(event, context):
+	try:
+		#Creating resources
+		s3_resource = boto3.resource('s3')
+		sqs = boto3.client('sqs')
+		queue_url = 'https://sqs.us-east-1.amazonaws.com/928765701029/s3fileprocessingpocsqs'
+		
+		#Starting to process the event
+		for eve in event.get('Records', ''):
+			#Checking if the trigger came from S3
+			if eve['requestParameters']['sourceIPAddress'] == '103.218.170.55' and eve['eventSource'] == 'aws:s3' and eve['eventName'] == 'ObjectCreated:Put':
+				#Extracting Object information
+				objBucket = eve['s3']['bucket']['name']
+				objKey = eve['s3']['object']['key']
+				
+				#Checking whether the file is already under process or not.
+				# Creating target key name
+				objProcessingKey = 'processing/' + objKey.split('/')[-1]
+				processingObjects = list(s3_resource.Bucket(objBucket).objects.filter(Prefix=objProcessingKey))
+				if len(processingObjects) > 0 and processingObjects[0].key == objProcessingKey:
+					print(f"{objKey.split('/')[-1]} file is alreay uner process. Please try to process it once it is done.")
+				else:
+					#Copying object from pending folder to processing folder
+					# objData = {'Bucket': objBucket, 'Key': objKey}
+					# s3_resource.meta.client.copy(objData, objBucket, objProcessingKey)
+					
+					#Sending message to SQS about the new file
+					print(f'sending message for {objKey}')
+					sqsResponse = sqs.send_message(
+						QueueUrl=queue_url,
+						DelaySeconds=0,
+						MessageAttributes={
+							'Title': {
+								'DataType': 'String',
+								'StringValue': 'Bird'
+							},
+							'Author': {
+								'DataType': 'String',
+								'StringValue': 's3://sefileprocessorpocbucket/pending'
+							}
+						},
+						MessageBody=objKey,
+					# 	MessageGroupId='sfppobjectuploadmsg' + str(msg_count),
+					# 	MessageDeduplicationId='sfppdeduptoken'
+					)
+					#Deleting the object from pending folder
+					# s3_resource.Object(objBucket, objKey).delete()
+					
+					#Creating ECS client
+					client = boto3.client('ecs')
+
+					#Executing FARGET task
+					print(f'Executing fargert task.')
+					response = client.run_task(
+					    cluster='S3fileprocessingPOCFargateCluster',
+						launchType='FARGATE',
+					    taskDefinition='arn:aws:ecs:us-east-1:928765701029:task-definition/python-file-scrambler-farget-task:7',
+					    platformVersion='LATEST',
+					    networkConfiguration={
+					        'awsvpcConfiguration': {
+					            'subnets': [
+					                'subnet-01bdbfbb1fe4adbdf',
+									'subnet-02d8be58b276c68bf'
+					            ],
+					            'assignPublicIp': 'ENABLED'
+					        }
+					    }
+					)
+
+		return {
+			'statusCode': 200,
+			'body': {
+				'status': 'Execution Successful'
+			}
+		}
+	except Exception as e:
+		print('Fatal error occured while trying to execute "S3-file-processing-POC-Lambda-func". Error Code: ' + str(e))
+
