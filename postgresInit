@@ -1,0 +1,23 @@
+psql -h ****.rds.amazonaws.com -p 5432 -d CCBILLPROCESSING_DEV -U saumalya75
+psql -h ****.rds.amazonaws.com -p 5432 -d CCBILLPROCESSING_DEV -U app_user
+GRANT USAGE ON SCHEMA CCBP TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA CCBP TO app_user;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA CCBP TO app_user;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA CCBP TO app_user;
+
+SET search_path TO your_schema_name;
+
+writer_conn = psycopg2.connect(user = "app_user", password = "***", host = "****.rds.amazonaws.com", port = "5432", database = "CCBILLPROCESSING_DEV")
+writer_conn = psycopg2.connect(user = "saumalya75", password = "Askme475", host = "****.rds.amazonaws.com", port = "5432", database = "CCBILLPROCESSING_DEV")
+writer_cur = writer_conn.cursor()
+writer_cur.execute("CREATE SCHEMA IF NOT EXISTS CCBP;")
+writer_cur.execute("CREATE USER ccbp_dev_user_saumalya WITH PASSWORD '****';")
+writer_cur.execute("CREATE USER app_user WITH PASSWORD '****';")
+writer_cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC;")
+writer_cur.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA CCBP TO app_user;")
+writer_cur.execute("ALTER DEFAULT PRIVILEGES FOR USER app_user IN SCHEMA CCBP GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;")
+
+
+writer_cur.execute("CREATE TABLE CCBP.PARAM_STORE(KEY text not null, VALUE text not null, OWNER text not null, ACTIVE_FLAG text not null, INSERT_TIMESTAMP timestamp not null, UPDATE_TIMESTAMP timestamp);")
+writer_cur.execute("INSERT INTO CCBP.PARAM_STORE(KEY, VALUE, OWNER, ACTIVE_FLAG, INSERT_TIMESTAMP, UPDATE_TIMESTAMP) VALUES('s3-landing-bucket', 'ccbp-landing-bucket', 'ccbp-dev-user-saumalya', 'Y', CURRENT_TIMESTAMP, NULL);")
+writer_cur.execute("SELECT DISTINCT KEY, VALUE FROM CCBP.PARAM_STORE WHERE ACTIVE_FLAG='Y';")
